@@ -424,7 +424,7 @@ def run_single_window(
     )
     print(f"performance (fixed window) = {performance_fw}")
     results_fw = results_fw.merge(
-        raw_data.reset_index()[["ticker", "date", "daily_vol"]].rename(
+        raw_data.reset_index(drop=True)[["ticker", "date", "daily_vol"]].rename(
             columns={"ticker": "identifier", "date": "time"}
         ),
         on=["identifier", "time"],
