@@ -108,15 +108,12 @@ class SharpeValidationLoss(keras.callbacks.Callback):
         if sharpe > self.best_sharpe + self.min_delta:
             self.best_sharpe = sharpe
             self.patience_counter = 0  # reset the count
-            print("better")
-            print(os.path.normpath("./" + self.weights_save_location))
             self.model.save_weights(os.path.normpath("./" + self.weights_save_location))
         else:
             self.patience_counter += 1
             if self.patience_counter >= self.early_stopping_patience:
                 self.stopped_epoch = epoch
                 self.model.stop_training = True
-                print(os.path.normpath(self.weights_save_location))
                 self.model.load_weights(os.path.normpath(self.weights_save_location))
         logs["sharpe"] = sharpe  # for keras tuner
         print(f"\nval_sharpe {logs['sharpe']}")
@@ -164,7 +161,6 @@ class TunerDiversifiedSharpe(kt.tuners.RandomSearch):
         for callback in original_callbacks:
             print("test")
             if isinstance(callback, SharpeValidationLoss):
-                print(callback.weights_save_location)
                 callback.set_weights_save_loc(
                     self._get_checkpoint_fname(trial.trial_id, self._reported_step)
                 )
