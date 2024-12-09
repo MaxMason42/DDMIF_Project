@@ -49,9 +49,12 @@ def calc_performance_metrics(data: pd.DataFrame, metric_suffix="", num_identifie
         f"annual_volatility{metric_suffix}": annual_volatility(srs),
         f"sharpe_ratio{metric_suffix}": sharpe_ratio(srs),
         f"downside_risk{metric_suffix}": downside_risk(srs),
+        f"sortino_ratio{metric_suffix}": sortino_ratio(srs),
         f"max_drawdown{metric_suffix}": -max_drawdown(srs),
+        f"calmar_ratio{metric_suffix}": calmar_ratio(srs),
         f"perc_pos_return{metric_suffix}": len(srs[srs > 0.0]) / len(srs),
-        f"profit_loss_ratio{metric_suffix}": np.mean(srs[srs > 0.0])/ np.mean(np.abs(srs[srs < 0.0]))
+        f"profit_loss_ratio{metric_suffix}": np.mean(srs[srs > 0.0])
+        / np.mean(np.abs(srs[srs < 0.0]))
     }
 
 
