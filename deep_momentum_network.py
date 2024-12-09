@@ -159,7 +159,6 @@ class TunerDiversifiedSharpe(kt.tuners.RandomSearch):
         original_callbacks = kwargs.pop("callbacks", [])
 
         for callback in original_callbacks:
-            print("test")
             if isinstance(callback, SharpeValidationLoss):
                 callback.set_weights_save_loc(
                     self._get_checkpoint_fname(trial.trial_id, self._reported_step)
