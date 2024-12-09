@@ -45,6 +45,11 @@ from classical_strategies import (
     annual_volatility
 )
 
+os.environ['CUDA_HOME'] = r"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.2" 
+os.environ['PATH'] += r";C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.2/bin" 
+os.environ['PATH'] += r";C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.2/extras/CUPTI/libx64" 
+os.environ['PATH'] += r";C:/tools/cuda/bin"
+
 
 physical_devices = tf.config.list_physical_devices("GPU")
 if physical_devices:
@@ -327,6 +332,7 @@ def run_single_window(
         return
 
     raw_data = pd.read_csv(features_file_path, index_col=0, parse_dates=True)
+    raw_data.rename(columns={'date.1': 'date'}, inplace=True)
     raw_data["date"] = raw_data["date"].astype("datetime64[ns]")
 
     model_features = ModelFeatures(
@@ -482,7 +488,7 @@ def run_all_windows(
     params: dict,
     changepoint_lbws: List[int],
     asset_class_dictionary=Dict[str, str],
-    hp_minibatch_size=[64, 128, 256],
+    hp_minibatch_size: List[int]=[64, 128, 256],
     standard_window_size=1
 ):
     # run the expanding window

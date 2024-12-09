@@ -143,7 +143,7 @@ def tempering_batchdot(input_list):
 
 
 
-class InterpretableMultiHeadAttention(keras.layers.Layers):
+class InterpretableMultiHeadAttention(keras.layers.Layer):
     def __init__(self, n_head: int, d_model: int, dropout: float, **kwargs):
         super().__init__(**kwargs)
         self.n_head = n_head

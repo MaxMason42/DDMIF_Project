@@ -24,6 +24,12 @@
 
 
 import os
+
+os.environ['CUDA_HOME'] = r"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.2" 
+os.environ['PATH'] += r";C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.2/bin" 
+os.environ['PATH'] += r";C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.2/extras/CUPTI/libx64" 
+os.environ['PATH'] += r";C:/tools/cuda/bin"
+
 from keras_tuner.tuners import RandomSearch
 from tensorflow import keras
 import tensorflow as tf
@@ -49,9 +55,17 @@ class SharpeLoss(tf.keras.losses.Loss):
 
 
 class SharpeValidationLoss(keras.callbacks.Callback):
-    def __init__(self, inputs, returns, time_indices, num_time, early_stopping_patience, 
-                 n_multiprocessing_workers,  weights_save_location="tmp/checkpoint", min_delta=1e-4):
-        
+    def __init__(
+        self,
+        inputs,
+        returns,
+        time_indices,
+        num_time,  # including a count for nulls which will be indexed as 0
+        early_stopping_patience,
+        n_multiprocessing_workers,
+        weights_save_location="tmp/checkpoint",
+        min_delta=1e-4
+    ):
         super(keras.callbacks.Callback, self).__init__()
         self.inputs = inputs
         self.returns = returns
@@ -60,43 +74,52 @@ class SharpeValidationLoss(keras.callbacks.Callback):
         self.early_stopping_patience = early_stopping_patience
         self.num_time = num_time
         self.min_delta = min_delta
-        self.best_sharpe = np.NINF
+
+        self.best_sharpe = np.NINF 
         self.weights_save_location = weights_save_location
-    
 
     def set_weights_save_loc(self, weights_save_location):
         self.weights_save_location = weights_save_location
-    
 
     def on_train_begin(self, logs=None):
         self.patience_counter = 0
         self.stopped_epoch = 0
         self.best_sharpe = np.NINF
-    
 
     def on_epoch_end(self, epoch, logs=None):
         positions = self.model.predict(
             self.inputs,
-            workers = self.n_multiprocessing_workers,
+            workers=self.n_multiprocessing_workers,
             use_multiprocessing=True
         )
 
-        captured_returns = tf.math.unsorted_segment_mean(positions * self.returns, self.time_indices, self.num_time)[1:]
+        captured_returns = tf.math.unsorted_segment_mean(
+            positions * self.returns, self.time_indices, self.num_time
+        )[1:]
 
-        sharpe = (tf.reduce_mean(captured_returns) / tf.sqrt(tf.math.reduce_variance(captured_returns) + tf.constant(1e-9)) * tf.sqrt(tf.constant(252.0))).numpy()
-
+        sharpe = (
+            tf.reduce_mean(captured_returns)
+            / tf.sqrt(
+                tf.math.reduce_variance(captured_returns)
+                + tf.constant(1e-9, dtype=tf.float64)
+            )
+            * tf.sqrt(tf.constant(252.0, dtype=tf.float64))
+        ).numpy()
         if sharpe > self.best_sharpe + self.min_delta:
             self.best_sharpe = sharpe
-            self.patience_counter = 0
-            self.model.save_weights(self.weights_save_location)
+            self.patience_counter = 0  # reset the count
+            print("better")
+            print(os.path.normpath("./" + self.weights_save_location))
+            self.model.save_weights(os.path.normpath("./" + self.weights_save_location))
         else:
             self.patience_counter += 1
             if self.patience_counter >= self.early_stopping_patience:
                 self.stopped_epoch = epoch
                 self.model.stop_training = True
-                self.model.load_weights(self.weights_save_location)
-        logs["sharpe"] = sharpe
-        print(f"\nval_sharpe {logs["sharpe"]}")
+                print(os.path.normpath(self.weights_save_location))
+                self.model.load_weights(os.path.normpath(self.weights_save_location))
+        logs["sharpe"] = sharpe  # for keras tuner
+        print(f"\nval_sharpe {logs['sharpe']}")
 
 
 class TunerValidationLoss(kt.tuners.RandomSearch):
@@ -139,17 +162,19 @@ class TunerDiversifiedSharpe(kt.tuners.RandomSearch):
         original_callbacks = kwargs.pop("callbacks", [])
 
         for callback in original_callbacks:
+            print("test")
             if isinstance(callback, SharpeValidationLoss):
+                print(callback.weights_save_location)
                 callback.set_weights_save_loc(
                     self._get_checkpoint_fname(trial.trial_id, self._reported_step)
                 )
 
         metrics = collections.defaultdict(list)
-        for execution in range(self.execution_per_trial):
+        for execution in range(self.executions_per_trial):
             copied_fit_kwargs = copy.copy(kwargs)
             callbacks = self._deepcopy_callbacks(original_callbacks)
             self._configure_tensorboard_dir(callbacks, trial, execution)
-            callbacks.append(kt.engine.tuner_utils.TunerCallback(self, trial))  #Not sure this TunerCallback() still exists
+            callbacks.append(kt.engine.tuner_utils.TunerCallback(self, trial)) 
             copied_fit_kwargs["callbacks"] = callbacks
 
             history = self._build_and_fit_model(trial, args, copied_fit_kwargs)
@@ -163,7 +188,7 @@ class TunerDiversifiedSharpe(kt.tuners.RandomSearch):
         averaged_metrics = {}
         for metric, execution_values in metrics.items():
             averaged_metrics[metric] = np.mean(execution_values)
-        self.oracle.update_trial(trial.trial_id, metrics=averaged_metrics, step=self._reported_step) #Not sure if _reported_step exists
+        self.oracle.update_trial(trial.trial_id, metrics=averaged_metrics, step=self._reported_step)
 
 
 class DeepMomentumNetworkModel(ABC):
@@ -197,11 +222,11 @@ class DeepMomentumNetworkModel(ABC):
                                              max_trials=self.random_search_iterations, directory=hp_directory, project_name=project_name)
         
 
-        @abstractmethod
-        def model_builder(self, hp):
-            return
+    @abstractmethod
+    def model_builder(self, hp):
+        return
     
-
+    @staticmethod
     def _index_times(val_time):
         val_time_unique = np.sort(np.unique(val_time))
         if val_time_unique[0]:
@@ -217,7 +242,6 @@ class DeepMomentumNetworkModel(ABC):
 
 
     def hyperparameter_search(self, train_data, valid_data):
-        #NEED ModelFeatures from model_inputs file
         data, labels, active_flags, _, _ = ModelFeatures._unpack(train_data)
         val_data, val_labels, val_flags, _, val_time = ModelFeatures._unpack(valid_data)
 
@@ -439,7 +463,7 @@ class LstmDeepMomentumNetworkModel(DeepMomentumNetworkModel):
 
         model = keras.Model(inputs=input, outputs=output)
 
-        adam = keras.optimizers.Adam(lr=learning_rate, clipnorm=max_gradient_norm)
+        adam = keras.optimizers.Adam(learning_rate=learning_rate, clipnorm=max_gradient_norm)
 
         sharpe_loss = SharpeLoss(self.output_size).call
 

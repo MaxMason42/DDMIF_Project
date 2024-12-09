@@ -409,6 +409,7 @@ class ModelFeatures:
         data = data.copy()
         data["date"] = data.index.strftime("%Y-%m-%d")
 
+
         id_col = get_single_col_by_input_type(InputTypes.ID, self._column_definition)
         time_col = get_single_col_by_input_type(InputTypes.TIME, self._column_definition)
         target_col = get_single_col_by_input_type(InputTypes.TARGET, self._column_definition)
@@ -429,6 +430,7 @@ class ModelFeatures:
                     )
                 else:
                     return None
+                
             
             for _, sliced in data.groupby(id_col):
 
@@ -436,7 +438,7 @@ class ModelFeatures:
                     "identifier": [id_col],
                     "date": [time_col],
                     "outputs": [target_col],
-                    "inputs": [input_cols]
+                    "inputs": input_cols
                 }
 
                 for k in col_mapping:
@@ -492,7 +494,7 @@ class ModelFeatures:
                 active_entries = np.ones((arr.shape[0], arr.shape[1], arr.shape[2]))
                 for i in range(batch_size):
                     active_entries[i, sequence_lengths[i]:, :] = 0
-                sequence_lengths = np.array(sequence_lengths, dtype=np.int)
+                sequence_lengths = np.array(sequence_lengths, dtype=int)
 
                 if "active_entries" not in data_map:
                     data_map["active_entries"] = [active_entries[sequence_lengths > 0, :, :]]
