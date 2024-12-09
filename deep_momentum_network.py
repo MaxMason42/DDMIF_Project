@@ -387,7 +387,7 @@ class DeepMomentumNetworkModel(ABC):
             metrics = pd.Series(metric_values, model.metrics_name)
             return metrics["loss"]
     
-    def get_position(self, data, model, sliding_window=True, years_geq=np.iinfo(np.int32).min, years_lt=np.iinfo(np.int32).max):
+    def get_positions(self, data, model, sliding_window=True, years_geq=np.iinfo(np.int32).min, years_lt=np.iinfo(np.int32).max):
         inputs, outputs, _, identifier, time = ModelFeatures._unpack(data)
         if sliding_window:
             time = pd.to_datetime(
