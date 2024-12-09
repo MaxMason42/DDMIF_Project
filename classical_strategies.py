@@ -40,9 +40,10 @@ from empyrical import (
 
 def calc_performance_metrics(data: pd.DataFrame, metric_suffix="", num_identifiers = None):
     if not num_identifiers:
-        num_identifiers = len(data.dropna()["ticker"].unique()) #Might just make ticker or permno
+        num_identifiers = len(data.dropna()["ticker"].unique())
     
-    srs = data.dropna().groupby(level=0)["captured_returns"].sum() / num_identifiers
+    srs = data.dropna().groupby("time")["captured_returns"].sum() / num_identifiers
+
     
     return {
         f"annual_return{metric_suffix}": annual_return(srs),

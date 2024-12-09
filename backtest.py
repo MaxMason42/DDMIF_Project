@@ -42,21 +42,31 @@ from classical_strategies import (
     calc_performance_metrics_subset,
     calc_sharpe_by_year,
     calc_net_returns,
-    annual_volatility
+    annual_volatility,
 )
 
-os.environ['CUDA_HOME'] = r"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.2" 
-os.environ['PATH'] += r";C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.2/bin" 
-os.environ['PATH'] += r";C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.2/extras/CUPTI/libx64" 
-os.environ['PATH'] += r";C:/tools/cuda/bin"
+VOL_TARGET = 0.15
 
+BACKTEST_AVERAGE_BASIS_POINTS = [None, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
+
+HP_MINIBATCH_SIZE= [64, 128, 256]
 
 physical_devices = tf.config.list_physical_devices("GPU")
 if physical_devices:
     tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
 
+def _get_directory_name(
+    experiment_name: str, train_interval: Tuple[int, int, int] = None
+) -> str:
+    """The directory name for saving results
 
-def _get_directory_name(experiment_name: str, train_interval: Tuple[int, int, int] = None):
+    Args:
+        experiment_name (str): name of experiment
+        train_interval (Tuple[int, int, int], optional): (start yr, end train yr / start test yr, end test year) Defaults to None.
+
+    Returns:
+        str: folder name
+    """
     if train_interval:
         return os.path.join(
             "results", experiment_name, f"{train_interval[1]}-{train_interval[2]}"
@@ -68,20 +78,46 @@ def _get_directory_name(experiment_name: str, train_interval: Tuple[int, int, in
         )
 
 
-def _basis_point_suffix(basis_points: float = None):
+def _basis_point_suffix(basis_points: float = None) -> str:
+    """Basis points suffix
+
+    Args:
+        basis_points (float, optional): bps valud. Defaults to None.
+
+    Returns:
+        str: suffix name
+    """
     if not basis_points:
         return ""
     return "_" + str(basis_points).replace(".", "_") + "_bps"
 
 
-def _interval_suffix(train_interval: Tuple[int, int, int], basis_points: float = None):
+def _interval_suffix(
+    train_interval: Tuple[int, int, int], basis_points: float = None
+) -> str:
+    """Interval points suffix
 
+    Args:
+        train_interval (Tuple[int, int, int], optional): (start yr, end train yr / start test yr, end test year) Defaults to None.
+        basis_points (float, optional): bps valud. Defaults to None.
+
+    Returns:
+        str: suffix name
+    """
     return f"_{train_interval[1]}_{train_interval[2]}" + _basis_point_suffix(
         basis_points
     )
 
 
-def _results_from_all_windows(experiment_name: str, train_intervals: List[Tuple[int, int, int]]):
+def _results_from_all_windows(
+    experiment_name: str, train_intervals: List[Tuple[int, int, int]]
+):
+    """Save a json with results from all windows
+
+    Args:
+        experiment_name (str): experiment name
+        train_intervals (List[Tuple[int, int, int]]): list of training intervals
+    """
     return pd.concat(
         [
             pd.read_json(
@@ -95,7 +131,6 @@ def _results_from_all_windows(experiment_name: str, train_intervals: List[Tuple[
     )
 
 
-
 def _get_asset_classes(asset_class_dictionary: Dict[str, str]):
     return np.unique(list(asset_class_dictionary.values())).tolist()
 
@@ -103,14 +138,28 @@ def _get_asset_classes(asset_class_dictionary: Dict[str, str]):
 def _captured_returns_from_all_windows(
     experiment_name: str,
     train_intervals: List[Tuple[int, int, int]],
-    volatility_rescaling: bool = False,
+    volatility_rescaling: bool = True,
     only_standard_windows: bool = True,
     volatilites_known: List[float] = None,
     filter_identifiers: List[str] = None,
     captured_returns_col: str = "captured_returns",
-    standard_window_size: int = 1):
+    standard_window_size: int = 1,
+) -> pd.Series:
+    """get sereis of captured returns from all intervals
 
+    Args:
+        experiment_name (str): name of experiment
+        train_intervals (List[Tuple[int, int, int]]): list of training intervals
+        volatility_rescaling (bool, optional): rescale to target annualised volatility. Defaults to True.
+        only_standard_windows (bool, optional): only include full windows. Defaults to True.
+        volatilites_known (List[float], optional): list of annualised volatities, if known. Defaults to None.
+        filter_identifiers (List[str], optional): only run for specified tickers. Defaults to None.
+        captured_returns_col (str, optional): column name of captured returns. Defaults to "captured_returns".
+        standard_window_size (int, optional): number of years in standard window. Defaults to 1.
 
+    Returns:
+        pd.Series: series of captured returns
+    """
     srs_list = []
     volatilites = volatilites_known if volatilites_known else []
     for interval in train_intervals:
@@ -133,15 +182,29 @@ def _captured_returns_from_all_windows(
             if volatility_rescaling and not volatilites_known:
                 volatilites.append(annual_volatility(srs))
     if volatility_rescaling:
-        return pd.concat(srs_list) * 0.15 / np.mean(volatilites)
+        return pd.concat(srs_list) * VOL_TARGET / np.mean(volatilites)
     else:
         return pd.concat(srs_list)
 
 
+def save_results(
+    results_sw: pd.DataFrame,
+    output_directory: str,
+    train_interval: Tuple[int, int, int],
+    num_identifiers: int,
+    asset_class_dictionary: Dict[str, str],
+    extra_metrics: dict = {},
+):
+    """save results json
 
-def save_results(results_sw: pd.DataFrame, output_directory: str, train_interval: Tuple[int, int, int],
-                num_identifiers: int, asset_class_dictionary: Dict[str, str], extra_metrics: dict = {}):
-
+    Args:
+        results_sw (pd.DataFrame): results dataframe
+        output_directory (str): output directory
+        train_interval (Tuple[int, int, int]): training interval
+        num_identifiers (int): number of tickers
+        asset_class_dictionary (Dict[str, str]): mapping of ticker to asset class
+        extra_metrics (dict, optional): additional metrics to save. Defaults to {}.
+    """
     asset_classes = ["ALL"]
     results_asset_class = [results_sw]
     if asset_class_dictionary:
@@ -160,7 +223,7 @@ def save_results(results_sw: pd.DataFrame, output_directory: str, train_interval
             ac_metrics = extra_metrics.copy()
         else:
             ac_metrics = {}
-        for basis_points in [None, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]:
+        for basis_points in BACKTEST_AVERAGE_BASIS_POINTS:
             suffix = _interval_suffix(train_interval, basis_points)
             if basis_points:
                 results_ac_bps = results_ac.drop(columns="captured_returns").rename(
@@ -187,10 +250,20 @@ def save_results(results_sw: pd.DataFrame, output_directory: str, train_interval
         file.write(json.dumps(metrics, indent=4))
 
 
+def aggregate_and_save_all_windows(
+    experiment_name: str,
+    train_intervals: List[Tuple[int, int, int]],
+    asset_class_dictionary: Dict[str, str],
+    standard_window_size: int,
+):
+    """Save a results summary, aggregating all windows
 
-def aggregate_and_save_all_windows(experiment_name: str, train_intervals: List[Tuple[int, int, int]],
-                                    asset_class_dictionary: Dict[str, str], standard_window_size: int):
-
+    Args:
+        experiment_name (str): experiment name
+        train_intervals (List[Tuple[int, int, int]]): list of train/test intervals
+        asset_class_dictionary (Dict[str, str]): map tickers to asset class
+        standard_window_size (int): number of years in standard window
+    """
     directory = _get_directory_name(experiment_name)
     all_results = _results_from_all_windows(experiment_name, train_intervals)
 
@@ -214,7 +287,7 @@ def aggregate_and_save_all_windows(experiment_name: str, train_intervals: List[T
 
     metrics = []
     rescaled_metrics = []
-    for bp in [None, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]:
+    for bp in BACKTEST_AVERAGE_BASIS_POINTS:
         suffix = _basis_point_suffix(bp)
         metrics += list(map(lambda m: m + suffix, _metrics))
         rescaled_metrics += list(map(lambda m: m + suffix, _rescaled_metrics))
@@ -242,7 +315,7 @@ def aggregate_and_save_all_windows(experiment_name: str, train_intervals: List[T
         )
         asset_results = all_results[asset_class]
 
-        for bp in [None, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]:
+        for bp in BACKTEST_AVERAGE_BASIS_POINTS:
             suffix = _basis_point_suffix(bp)
             average_results[f"sharpe_ratio_years{suffix}"] = []
         # average_results["sharpe_ratio_years_std"] = 0.0
@@ -251,19 +324,19 @@ def aggregate_and_save_all_windows(experiment_name: str, train_intervals: List[T
             # only want full windows here
             if interval[2] - interval[1] == standard_window_size:
                 for m in _metrics:
-                    for bp in [None, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]:
+                    for bp in BACKTEST_AVERAGE_BASIS_POINTS:
                         suffix = _interval_suffix(interval, bp)
                         average_results[m + _basis_point_suffix(bp)].append(
                             asset_results[m + suffix]
                         )
 
-            for bp in [None, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]:
+            for bp in BACKTEST_AVERAGE_BASIS_POINTS:
                 suffix = _basis_point_suffix(bp)
                 for year in range(interval[1], interval[2]):
                     average_results["sharpe_ratio_years" + suffix].append(
                         asset_results[f"sharpe_ratio_{int(year)}{suffix}"]
                     )
-        for bp in [None, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]:
+        for bp in BACKTEST_AVERAGE_BASIS_POINTS:
             suffix = _basis_point_suffix(bp)
             all_captured_returns = _captured_returns_from_all_windows(
                 experiment_name,
@@ -296,7 +369,7 @@ def aggregate_and_save_all_windows(experiment_name: str, train_intervals: List[T
         for key in average_results:
             average_results[key] = np.mean(average_results[key])
 
-        for bp in [None, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]:
+        for bp in BACKTEST_AVERAGE_BASIS_POINTS:
             suffix = _basis_point_suffix(bp)
             average_results[f"sharpe_ratio_years_std{suffix}"] = np.std(
                 window_history[f"sharpe_ratio_years{suffix}"]
@@ -311,7 +384,6 @@ def aggregate_and_save_all_windows(experiment_name: str, train_intervals: List[T
         file.write(json.dumps(list_metrics, indent=4))
 
 
-
 def run_single_window(
     experiment_name: str,
     features_file_path: str,
@@ -320,9 +392,23 @@ def run_single_window(
     changepoint_lbws: List[int],
     skip_if_completed: bool = True,
     asset_class_dictionary: Dict[str, str] = None,
-    hp_minibatch_size: List[int] = [64, 128, 256]
+    hp_minibatch_size: List[int] = HP_MINIBATCH_SIZE,
 ):
-    
+    """Backtest for a single test window
+
+    Args:
+        experiment_name (str): experiment name
+        features_file_path (str): name of file, containing features
+        train_interval (Tuple[int, int, int], optional): (start yr, end train yr / start test yr, end test year)
+        params (dict): dmn experiment parameters
+        changepoint_lbws (List[int]): CPD LBWs to be used
+        skip_if_completed (bool, optional): skip, if previously completed. Defaults to True.
+        asset_class_dictionary (Dict[str, str], optional): map tickers to asset class. Defaults to None.
+        hp_minibatch_size (List[int], optional): minibatch size hyperparameter grid. Defaults to HP_MINIBATCH_SIZE.
+
+    Raises:
+        Exception: [description]
+    """
     directory = _get_directory_name(experiment_name, train_interval)
 
     if skip_if_completed and os.path.exists(os.path.join(directory, "results.json")):
@@ -335,6 +421,7 @@ def run_single_window(
     raw_data.rename(columns={'date.1': 'date'}, inplace=True)
     raw_data["date"] = raw_data["date"].astype("datetime64[ns]")
 
+    # TODO more/less than the one year test buffer
     model_features = ModelFeatures(
         raw_data,
         params["total_time_steps"],
@@ -369,9 +456,9 @@ def run_single_window(
             **model_features.input_params,
             **{
                 "column_definition": model_features.get_column_definition(),
-                "num_encoder_steps": 0, 
+                "num_encoder_steps": 0,  # TODO artefact
                 "stack_size": 1,
-                "num_heads": 4
+                "num_heads": 4,  # TODO to fixed params
             },
         )
     else:
@@ -410,7 +497,7 @@ def run_single_window(
         on=["identifier", "time"],
     )
     results_sw = calc_net_returns(
-        results_sw, [None, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0][1:], model_features.tickers
+        results_sw, BACKTEST_AVERAGE_BASIS_POINTS[1:], model_features.tickers
     )
     results_sw.to_csv(os.path.join(directory, "captured_returns_sw.csv"))
 
@@ -430,7 +517,7 @@ def run_single_window(
         on=["identifier", "time"],
     )
     results_fw = calc_net_returns(
-        results_fw, [None, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0][1:], model_features.tickers
+        results_fw, BACKTEST_AVERAGE_BASIS_POINTS[1:], model_features.tickers
     )
     results_fw.to_csv(os.path.join(directory, "captured_returns_fw.csv"))
 
@@ -471,14 +558,13 @@ def run_single_window(
         },
     )
 
-
+    # get rid of everything and reset - TODO maybe not needed...
     del best_model
     gc.collect()
     tf.keras.backend.clear_session()
     physical_devices = tf.config.list_physical_devices("GPU")
     if physical_devices:
         tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
-
 
 
 def run_all_windows(
@@ -488,9 +574,21 @@ def run_all_windows(
     params: dict,
     changepoint_lbws: List[int],
     asset_class_dictionary=Dict[str, str],
-    hp_minibatch_size: List[int]=[64, 128, 256],
-    standard_window_size=1
+    hp_minibatch_size=HP_MINIBATCH_SIZE,
+    standard_window_size=1,
 ):
+    """Run experiment for multiple test intervals and aggregate results
+
+    Args:
+        experiment_name (str): experiment name
+        features_file_path (str): name of file, containing features
+        train_intervals (List[Tuple[int, int, int]]): klist of all training intervals
+        params (dict): dmn experiment parameters
+        changepoint_lbws (List[int]): CPD LBWs to be used
+        asset_class_dictionary ([type], optional): map tickers to asset class. Defaults to None. Defaults to Dict[str, str].
+        hp_minibatch_size ([type], optional): minibatch size hyperparameter grid. Defaults to HP_MINIBATCH_SIZE.
+        standard_window_size (int, optional): standard number of years in test window. Defaults to 1.
+    """
     # run the expanding window
     for interval in train_intervals:
         run_single_window(
@@ -508,14 +606,17 @@ def run_all_windows(
     )
 
 
-
-
-
-
-
-#Basic long only momentum strategy
-
 def intermediate_momentum_position(w: float, returns_data: pd.DataFrame) -> pd.Series:
+    """Position size for intermediate strategy.
+    See https://arxiv.org/pdf/2105.13727.pdf
+
+    Args:
+        w (float): intermediate wweighting
+        returns_data (pd.DataFrame): [description]
+
+    Returns:
+        pd.Series: series of position sizes
+    """
     return w * np.sign(returns_data["norm_monthly_return"]) + (1 - w) * np.sign(
         returns_data["norm_annual_return"]
     )
@@ -528,8 +629,15 @@ def run_classical_methods(
     long_only_experiment_name="long_only",
     tsmom_experiment_name="tsmom",
 ):
-    """Run classical TSMOM method and Long Only as defined in https://arxiv.org/pdf/2105.13727.pdf."""
+    """Run classical TSMOM method and Long Only as defined in https://arxiv.org/pdf/2105.13727.pdf.
 
+    Args:
+        features_file_path ([type]): file path containing the features.
+        train_intervals ([type]): list of train/test intervalse
+        reference_experiment ([type]): other experiment, testing against
+        long_only_experiment_name (str, optional): name of long only experiment. Defaults to "long_only".
+        tsmom_experiment_name (str, optional): name of TSMOM experiment. Defaults to "tsmom".
+    """
     directory = _get_directory_name(long_only_experiment_name)
     if not os.path.exists(directory):
         os.mkdir(directory)
@@ -570,4 +678,3 @@ def run_classical_methods(
             returns_data["position"] * returns_data["returns"]
         )
         returns_data.to_csv(f"{directory}/captured_returns_sw.csv")
-
