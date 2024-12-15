@@ -133,7 +133,7 @@ class SharpeValidationLoss(keras.callbacks.Callback):
                 tf.math.reduce_variance(captured_returns)
                 + tf.constant(1e-9, dtype=tf.float64)
             )
-            #* tf.sqrt(tf.constant(252.0, dtype=tf.float64))
+            * tf.sqrt(tf.constant(252.0, dtype=tf.float64))
         ).numpy()
         if sharpe > self.best_sharpe + self.min_delta:
             self.best_sharpe = sharpe
@@ -466,6 +466,9 @@ class DeepMomentumNetworkModel(ABC):
         """
 
         inputs, outputs, active_entries, _, _ = ModelFeatures._unpack(data)
+
+        print("this is in evaluate inputs shape")
+        print(inputs.shape)
 
         if self.evaluate_diversified_val_sharpe:
             _, performance = self.get_positions(data, model, False)

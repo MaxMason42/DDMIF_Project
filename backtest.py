@@ -437,6 +437,9 @@ def run_single_window(
         asset_class_dictionary=asset_class_dictionary,
     )
 
+    print("Train set")
+    print(len(model_features.train["inputs"]))
+
     hp_directory = os.path.join(directory, "hp")
 
     if params["architecture"] == "LSTM":
